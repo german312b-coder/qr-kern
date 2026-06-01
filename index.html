@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR-маркировка образцов керна</title>
+  <!-- Локальные библиотеки (lib/) — работают офлайн, без CDN -->
+  <script src="lib/qrcode-generator.min.js"></script>
+  <script src="lib/html5-qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, Arial, sans-serif; background: #f0f4f8; color: #1a1a2e; min-height: 100vh; }
+
+    /* Header */
+    .header { background: #0d47a1; color: white; padding: 14px 20px 0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .header h1 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .tabs { display: flex; gap: 4px; }
+    .tab-btn { flex: 1; padding: 10px 0; border: none; background: rgba(255,255,255,.15); color: rgba(255,255,255,.7); font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px 8px 0 0; transition: all .2s; }
+    .tab-btn.active { background: #f0f4f8; color: #0d47a1; }
+
+    /* Layout */
+    .container { max-width: 960px; margin: 0 auto; padding: 20px 16px; }
+    #tab-scanner .container { max-width: 520px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-blue  { background: #0d47a1; color: white; }
+    .btn-green { background: #1b5e20; color: white; }
+    .btn-grey  { background: #546e7a; color: white; }
+    .btn-sm    { padding: 6px 12px; font-size: 12px; }
+    .btn-block { width: 100%; justify-content: center; padding: 13px; font-size: 15px; }
+
+    /* Generator toolbar */
+    .gen-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .file-hint { font-size: 12px; color: #888; margin-top: 4px; }
+
+    /* Empty state */
+    .empty-state { background: white; border-radius: 12px; padding: 40px 24px; text-align: center; color: #888; border: 2px dashed #dde3ed; }
+    .empty-state h3 { font-size: 16px; color: #555; margin-bottom: 8px; }
+    .empty-state p  { font-size: 13px; line-height: 1.6; }
+    .empty-state code { background: #f0f4f8; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+    /* QR Grid */
+    .qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+    .qr-card { background: white; border-radius: 10px; padding: 16px; text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+    .qr-canvas-wrap { display: flex; justify-content: center; margin-bottom: 10px; }
+    .qr-canvas-wrap canvas { max-width: 150px; height: auto !important; }
+    .qr-id    { font-size: 14px; font-weight: 700; color: #0d47a1; margin-bottom: 3px; }
+    .qr-sub   { font-size: 11px; color: #666; margin-bottom: 2px; }
+    .qr-sub2  { font-size: 11px; color: #aaa; margin-bottom: 10px; }
+
+    /* Scanner */
+    .scan-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 14px; }
+    .scan-card h2 { font-size: 15px; color: #0d47a1; margin-bottom: 12px; }
+    #qr-reader { width: 100%; border-radius: 8px; overflow: hidden; }
+
+    .notice { background: #fff3e0; border-left: 4px solid #ff9800; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 12px; color: #555; line-height: 1.5; margin-top: 12px; }
+    .notice strong { color: #e65100; display: block; margin-bottom: 2px; }
+
+    .manual-row { display: flex; gap: 8px; margin-top: 12px; }
+    .manual-row input { flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .manual-row input::placeholder { color: #bbb; }
+
+    /* Result card */
+    .result-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+    .result-id    { font-size: 12px; color: #888; }
+    .result-title { font-size: 19px; font-weight: 700; color: #0d47a1; margin: 2px 0; }
+    .result-meta  { font-size: 13px; color: #666; }
+
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+    .status-принят   { background: #e8f5e9; color: #2e7d32; }
+    .status-в_работе { background: #fff3e0; color: #e65100; }
+    .status-завершён { background: #e3f2fd; color: #0d47a1; }
+
+    .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+    .param-cell { background: #f5f7fa; border-radius: 8px; padding: 10px 12px; }
+    .param-label { font-size: 11px; color: #888; margin-bottom: 3px; }
+    .param-value { font-size: 17px; font-weight: 700; }
+    .val-good    { color: #2e7d32; }
+    .val-warn    { color: #e65100; }
+    .val-neutral { color: #1a1a2e; }
+
+    .desc-block { background: #f5f7fa; border-radius: 8px; padding: 12px; font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 6px; }
+    .rock-type  { font-size: 12px; color: #888; font-style: italic; margin-bottom: 14px; }
+
+    /* Raw QR result (no CSV loaded) */
+    .raw-result { background: #f0f4f8; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 14px; }
+    .raw-result .raw-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+    .raw-result .raw-value { font-size: 24px; font-weight: 700; color: #0d47a1; word-break: break-all; }
+    .raw-result .raw-hint  { font-size: 12px; color: #aaa; margin-top: 8px; }
+
+    .btn-row { display: flex; flex-direction: column; gap: 8px; }
+
+    /* Print */
+    @media print {
+      .header, .gen-toolbar { display: none; }
+      body { background: white; }
+      .qr-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      .qr-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; padding: 10px; }
+      .qr-dl-btn { display: none !important; }
+      #tab-scanner { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>QR-маркировка образцов керна</h1>
+  <div class="tabs">
+    <button class="tab-btn active" id="btn-gen"  onclick="switchTab('generator')">Генератор QR</button>
+    <button class="tab-btn"        id="btn-scan" onclick="switchTab('scanner')">Сканер</button>
+  </div>
+</div>
+
+<!-- ══ GENERATOR ══ -->
+<div id="tab-generator">
+  <div class="container">
+
+    <div class="gen-toolbar">
+      <label class="btn btn-blue" style="cursor:pointer">
+        Загрузить CSV
+        <input type="file" accept=".csv,.txt" onchange="loadCSV(this)" style="display:none">
+      </label>
+      <button class="btn btn-grey" onclick="window.print()" id="print-btn" style="display:none">
+        Распечатать все
+      </button>
+    </div>
+
+    <div id="qr-area">
+      <div class="empty-state">
+        <h3>Загрузите CSV-файл с образцами</h3>
+        <p>Ожидаемые колонки (первая строка — заголовки):<br><br>
+          <code>id, well, horizon, depth_m, box_number, rock_type,<br>
+          porosity_pct, permeability_md, oil_saturation_pct,<br>
+          water_saturation_pct, sample_date, description, status</code>
+        </p>
+        <p style="margin-top:12px">Файл-шаблон: <code>kern_samples_qr_template.csv</code></p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ SCANNER ══ -->
+<div id="tab-scanner" style="display:none">
+  <div class="container">
+
+    <div id="scan-section">
+      <div class="scan-card">
+        <h2>Наведите камеру на QR-код образца</h2>
+        <div id="qr-reader"></div>
+        <div class="notice" id="camera-notice" style="display:none">
+          <strong>Камера недоступна</strong>
+          Попробуйте открыть файл в Chrome или Edge. Либо используйте ручной ввод ниже.
+        </div>
+        <div class="manual-row">
+          <input type="text" id="manual-id" placeholder="Или введите ID: КРН-0001" />
+          <button class="btn btn-blue" onclick="lookupManual()">Найти</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="result-section" style="display:none">
+      <div id="result-content"></div>
+      <div class="btn-row" style="margin-top:4px">
+        <button class="btn btn-grey btn-block" onclick="resetScanner()">
+          Сканировать снова
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ── Данные ───────────────────────────────────────────────────────────────
+  let SAMPLES = {};
+
+  // ── CSV-парсер ───────────────────────────────────────────────────────────
+  function parseCSV(text) {
+    // Убираем BOM (Excel добавляет для UTF-8)
+    text = text.replace(/^﻿/, '');
+    const lines = text.trim().split(/\r?\n/);
+    const headers = parseCSVRow(lines[0]).map(h => h.trim());
+    return lines.slice(1).filter(l => l.trim()).map(line => {
+      const vals = parseCSVRow(line);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+      return obj;
+    });
+  }
+
+  function parseCSVRow(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+      else { cur += c; }
+    }
+    result.push(cur);
+    return result;
+  }
+
+  // ── Загрузка файла ───────────────────────────────────────────────────────
+  function loadCSV(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const rows = parseCSV(e.target.result);
+      if (!rows.length || !rows[0].id) {
+        document.getElementById('qr-area').innerHTML =
+          '<div class="notice"><strong>Ошибка</strong>Не найдена колонка <code>id</code>. Проверьте заголовки CSV.</div>';
+        return;
+      }
+      SAMPLES = {};
+      rows.forEach(r => { SAMPLES[r.id] = r; });
+      renderGenerator(rows);
+    };
+    reader.onerror = () => {
+      alert('Не удалось прочитать файл. Проверьте кодировку (должна быть UTF-8).');
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  // ── Генератор QR ─────────────────────────────────────────────────────────
+  // qrcode-generator: глобал `qrcode`. Включаем UTF-8, чтобы кириллица (КРН) кодировалась.
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+
+  // Возвращает data:image/gif URL для QR-кода. cellSize — пикселей на модуль.
+  // Уровень 'L' (~7% коррекции) — даёт больше ёмкости под JSON-данные образца.
+  function makeQRDataURL(text, cellSize, margin) {
+    const qr = qrcode(0, 'L');   // typeNumber 0 = авто-размер
+    qr.addData(text);
+    qr.make();
+    return qr.createDataURL(cellSize, margin);
+  }
+
+  // Что кодируем в QR — весь образец как JSON (телефон читает данные прямо из кода)
+  function samplePayload(s) {
+    return JSON.stringify({
+      id: s.id, well: s.well, horizon: s.horizon, depth_m: s.depth_m,
+      box_number: s.box_number, rock_type: s.rock_type,
+      porosity_pct: s.porosity_pct, permeability_md: s.permeability_md,
+      oil_saturation_pct: s.oil_saturation_pct, water_saturation_pct: s.water_saturation_pct,
+      sample_date: s.sample_date, description: s.description, status: s.status
+    });
+  }
+
+  function renderGenerator(rows) {
+    document.getElementById('print-btn').style.display = '';
+    const area = document.getElementById('qr-area');
+    area.innerHTML = '<div class="qr-grid" id="qr-grid"></div>';
+    const grid = document.getElementById('qr-grid');
+
+    rows.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'qr-card';
+
+      const qrWrap = document.createElement('div');
+      qrWrap.className = 'qr-canvas-wrap';
+      try {
+        const img = document.createElement('img');
+        img.src = makeQRDataURL(samplePayload(s), 4, 2);
+        img.style.cssText = 'max-width:150px;height:auto;image-rendering:pixelated;border-radius:4px';
+        img.alt = s.id;
+        qrWrap.appendChild(img);
+      } catch (e) {
+        qrWrap.innerHTML = `<div style="color:#c62828;font-size:12px;padding:8px">QR-ошибка:<br>${escHtml(e.message)}</div>`;
+      }
+      card.appendChild(qrWrap);
+
+      const info = document.createElement('div');
+      info.innerHTML =
+        `<div class="qr-id">${escHtml(s.id)}</div>` +
+        `<div class="qr-sub">${escHtml(s.depth_m)} м · Ящик ${escHtml(s.box_number || '—')}</div>` +
+        `<div class="qr-sub2">Скв. ${escHtml(s.well)} · ${escHtml(s.horizon)}</div>` +
+        `<button class="btn btn-blue btn-sm" style="width:100%;margin-top:10px"` +
+        ` onclick="downloadQR('${escHtml(s.id)}')">Скачать PNG</button>`;
+      card.appendChild(info);
+      grid.appendChild(card);
+    });
+  }
+
+  // Скачивание: рисуем QR на canvas (gif→png) и отдаём как файл
+  function downloadQR(id) {
+    const s = SAMPLES[id];
+    if (!s) { alert('Образец не найден: ' + id); return; }
+    try {
+      const src = makeQRDataURL(samplePayload(s), 10, 4);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = id + '_QR.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      img.src = src;
+    } catch (e) {
+      alert('Ошибка генерации QR: ' + e.message);
+    }
+  }
+
+  // ── Переключение табов ───────────────────────────────────────────────────
+  let activeTab = 'generator';
+
+  function switchTab(tab) {
+    if (tab === activeTab) return;
+    activeTab = tab;
+    document.getElementById('tab-generator').style.display = tab === 'generator' ? '' : 'none';
+    document.getElementById('tab-scanner').style.display   = tab === 'scanner'   ? '' : 'none';
+    document.getElementById('btn-gen').classList.toggle('active',  tab === 'generator');
+    document.getElementById('btn-scan').classList.toggle('active', tab === 'scanner');
+    if (tab === 'scanner') startScanner();
+    else stopScanner();
+  }
+
+  // ── Сканер ───────────────────────────────────────────────────────────────
+  let scanner = null;
+  let scannerRunning = false;
+
+  async function startScanner() {
+    if (scannerRunning) return;
+    if (!scanner) scanner = new Html5Qrcode('qr-reader');
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        text => { scanner.stop().then(() => { scannerRunning = false; showResult(text.trim()); }); }
+      );
+      scannerRunning = true;
+    } catch (_) {
+      document.getElementById('camera-notice').style.display = 'block';
+    }
+  }
+
+  async function stopScanner() {
+    if (scannerRunning && scanner) {
+      await scanner.stop().catch(() => {});
+      scannerRunning = false;
+    }
+  }
+
+  // ── Поиск ────────────────────────────────────────────────────────────────
+  document.getElementById('manual-id').addEventListener('keydown', e => {
+    if (e.key === 'Enter') lookupManual();
+  });
+
+  function lookupManual() {
+    const v = document.getElementById('manual-id').value.trim();
+    if (v) showResult(v);
+  }
+
+  // text — содержимое QR-кода. Может быть: JSON-объект образца (основной случай),
+  // либо просто ID (если CSV загружен на этом устройстве), либо произвольная строка.
+  function showResult(text) {
+    document.getElementById('scan-section').style.display   = 'none';
+    document.getElementById('result-section').style.display = 'block';
+    const content = document.getElementById('result-content');
+
+    // 1) Пробуем разобрать как JSON-данные образца (данные зашиты в сам QR)
+    let s = null;
+    try {
+      const obj = JSON.parse(text);
+      if (obj && obj.id) s = obj;
+    } catch (_) { /* не JSON — идём дальше */ }
+
+    // 2) Фоллбэк: голый ID + загруженный на этом устройстве CSV
+    if (!s && SAMPLES[text]) s = SAMPLES[text];
+
+    if (!s) {
+      // Нет структурированных данных — показываем как есть
+      content.innerHTML = `
+        <div class="raw-result">
+          <div class="raw-label">QR-код содержит:</div>
+          <div class="raw-value">${escHtml(text)}</div>
+          <div class="raw-hint">Это не карточка образца. Сканируйте QR, созданный во вкладке «Генератор».</div>
+        </div>`;
+      return;
+    }
+
+    // Полная карточка образца
+    const statusLabel = { принят: 'Принят', в_работе: 'В работе', завершён: 'Завершён' };
+    content.innerHTML = `
+      <div class="scan-card">
+        <div class="result-header">
+          <div>
+            <div class="result-id">Образец: ${s.id}</div>
+            <div class="result-title">Скв. ${s.well} · ${s.horizon}</div>
+            <div class="result-meta">Глубина ${s.depth_m} м · Ящик ${s.box_number} · ${s.sample_date}</div>
+          </div>
+          <span class="status-badge status-${s.status}">${statusLabel[s.status] || s.status}</span>
+        </div>
+        <div class="params-grid">
+          ${paramCell('Пористость',    s.porosity_pct,         '%',  'porosity')}
+          ${paramCell('Проницаемость', s.permeability_md,      'мД', 'perm')}
+          ${paramCell('Нефтенас.',     s.oil_saturation_pct,   '%',  'oil')}
+          ${paramCell('Водонас.',      s.water_saturation_pct, '%',  'water')}
+        </div>
+        <div class="desc-block">${escHtml(s.description)}</div>
+        <div class="rock-type">${escHtml(s.rock_type)}</div>
+      </div>`;
+
+    window._current = s;
+  }
+
+  function paramCell(label, value, unit, type) {
+    const n = parseFloat(value);
+    let cls = 'val-neutral';
+    if (type === 'porosity') cls = n > 20 ? 'val-good' : n < 15 ? 'val-warn' : 'val-neutral';
+    if (type === 'perm')     cls = n > 200 ? 'val-good' : n < 50 ? 'val-warn' : 'val-neutral';
+    if (type === 'oil')      cls = n > 60  ? 'val-good' : n < 45 ? 'val-warn' : 'val-neutral';
+    return `<div class="param-cell">
+      <div class="param-label">${label}</div>
+      <div class="param-value ${cls}">${value} <small style="font-size:12px;font-weight:400">${unit}</small></div>
+    </div>`;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Сброс сканера ────────────────────────────────────────────────────────
+  function resetScanner() {
+    document.getElementById('result-section').style.display = 'none';
+    document.getElementById('scan-section').style.display   = '';
+    document.getElementById('manual-id').value = '';
+    window._current = null;
+    startScanner();
+  }
+</script>
+</body>
+</html>
